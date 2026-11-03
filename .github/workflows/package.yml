@@ -14,7 +14,7 @@ on:
         options: ["27", "26", "17"]
         default: "27"
       init_data:
-        description: "Create a NEW installation seed if no saved seed exists (iPadOS 27 only)"
+        description: "Create a NEW installation seed if no saved seed exists (only used by iPadOS 27 packaging)"
         type: boolean
         default: false
       data_seed_url:
@@ -91,14 +91,14 @@ jobs:
           PY
       - uses: actions/cache/restore@v4
         id: data-cache
-        if: inputs.os == '27'
+        if: inputs.os == '27' || inputs.os == '17'
         with:
           path: |
             UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/data.dbr
             UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/inputs.json
-          key: ${{ steps.seed-key.outputs.key }}-${{ inputs.os }}
+          key: ${{ steps.seed-key.outputs.key }}
       - name: prepare preserved Data seed
-        if: inputs.os == '27'
+        if: inputs.os == '27' || inputs.os == '17'
         env:
           INIT_DATA: ${{ inputs.init_data }}
         run: |
@@ -134,6 +134,9 @@ jobs:
           if [ "$OS_PROFILE" = 27 ] && [ "$INIT_DATA" = true ]; then
             args+=(--init-data)
           fi
+          if [ "$OS_PROFILE" = 17 ]; then
+            args+=(--data-ramdisk ../UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/data.dbr)
+          fi
           scripts/package.sh "${args[@]}"
       - uses: actions/cache/save@v4
         if: always() && inputs.os == '27' && steps.data-cache.outputs.cache-hit != 'true' && hashFiles('UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/data.dbr') != ''
@@ -141,7 +144,7 @@ jobs:
           path: |
             UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/data.dbr
             UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/inputs.json
-          key: ${{ steps.seed-key.outputs.key }}-${{ inputs.os }}
+          key: ${{ steps.seed-key.outputs.key }}
       - name: installation seed backup
         if: always() && inputs.os == '27' && hashFiles('UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/data.dbr') != ''
         uses: actions/upload-artifact@v4
