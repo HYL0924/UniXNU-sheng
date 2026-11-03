@@ -51,6 +51,16 @@ jobs:
           repository: UniXNU/uefi-sheng
           path: uefi-sheng
           submodules: recursive
+      - name: normalize Mesa patch null paths
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          for patch in Path("UniXNU/patches/mesa").glob("*.patch"):
+              text = patch.read_text()
+              fixed = text.replace("\n--- dev/null\n", "\n--- /dev/null\n").replace("\n+++ dev/null\n", "\n+++ /dev/null\n")
+              if fixed != text:
+                  patch.write_text(fixed)
+          PY
       - name: tools
         run: |
           brew install dtc llvm lld cmake mtools ninja glslang shaderc spirv-tools bison pkgconf rustup blacktop/tap/ipsw
