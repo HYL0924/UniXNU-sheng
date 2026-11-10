@@ -125,6 +125,25 @@ jobs:
             echo 'No saved Data seed in the cache.' >&2
             exit 1
           fi
+      # build-wifi-userspace.py builds the native supplicant from the locked
+      # Linux, FreeBSD and wpa_supplicant sources under drivers/Ath12kWifi/deps.
+      # fetch-sources.py clones them, but asks sparse-checkout for cone-mode
+      # patterns that carry a leading slash, which the runner's git rejects.
+      # Fetch here with the patterns stripped and in no-cone mode.
+      - name: prepare the locked Wi-Fi supplicant sources
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import sys
+          path = pathlib.Path('device/drivers/Ath12kWifi/tools/fetch-sources.py')
+          text = path.read_text()
+          old = 'subprocess.run(["git", "-C", str(directory), "sparse-checkout", "add", *source["paths"]], check=True)'
+          new = 'subprocess.run(["git", "-C", str(directory), "sparse-checkout", "set", "--no-cone", *paths], check=True)'
+          if old not in text:
+              sys.exit('fetch-sources.py no longer matches the workflow patch')
+          path.write_text(text.replace(old, new))
+          PY
+          python3 device/drivers/Ath12kWifi/tools/fetch-sources.py
       - name: package
         working-directory: device
         env:
