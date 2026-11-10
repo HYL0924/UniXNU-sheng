@@ -144,6 +144,25 @@ jobs:
           path.write_text(text.replace(old, new))
           PY
           python3 device/drivers/Ath12kWifi/tools/fetch-sources.py
+      # The device repository pins the SoC source at a9f45dc6, whose
+      # kits/Sm8550Platform has no Sm8550GeniUart.h; package/BluetoothProbe.cpp
+      # includes it and fails the -Werror compile. 97665e28, the current SoC
+      # main, carries the header; feeds.toml wins over unixnu.lock for schema 2.
+      - name: pin the SoC source that carries Sm8550GeniUart.h
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import re
+          import sys
+          pin = '97665e28578483082b674e8375a8fa65f4cf49cf'
+          path = pathlib.Path('device/feeds.toml')
+          text = path.read_text()
+          pattern = re.compile(r'(kind = "soc"\r?\nname = "sm8550"\r?\ngit = "[^"]+"\r?\ncommit = ")[0-9a-f]{40}(")')
+          if not pattern.search(text):
+              sys.exit('feeds.toml sm8550 entry changed')
+          path.write_text(pattern.sub(lambda match: match.group(1) + pin + match.group(2), text))
+          print('sm8550 pinned to', pin)
+          PY
       - name: package
         working-directory: device
         env:
