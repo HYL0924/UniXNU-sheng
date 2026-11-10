@@ -163,6 +163,20 @@ jobs:
           path.write_text(pattern.sub(lambda match: match.group(1) + pin + match.group(2), text))
           print('sm8550 pinned to', pin)
           PY
+      # arm64e has no prebuilt std: cargo builds std and panic_unwind from
+      # rust-src on the runner, which needs more than the script's 30 minutes.
+      - name: allow the Rust bridge build more time
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import sys
+          path = pathlib.Path('UniXNU/scripts/build-adreno-metal-bridge.py')
+          text = path.read_text()
+          if 'timeout=1800' not in text:
+              sys.exit('build-adreno-metal-bridge.py timeout changed')
+          path.write_text(text.replace('timeout=1800', 'timeout=7200'))
+          print('cargo timeout raised to 7200 s')
+          PY
       - name: package
         working-directory: device
         env:
