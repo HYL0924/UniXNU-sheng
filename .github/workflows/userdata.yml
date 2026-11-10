@@ -1,0 +1,73 @@
+name: userdata
+
+# Builds the userdata partition image from the target IPSW on a macOS runner: the
+# unchanged OS and SystemOS disk images behind the SHNGROOT manifest, with no
+# platform seed. Flash it with "fastboot flash userdata". The run publishes
+# userdata-root-<os> for one day, so download it and delete the run.
+
+on:
+  workflow_dispatch:
+    inputs:
+      os:
+        description: "OS profile of the image"
+        type: choice
+        options: ["27", "26", "17"]
+        default: "27"
+      dry_run:
+        description: "Check sizes and pins only, write nothing"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: userdata-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  userdata:
+    runs-on: macos-26
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: device
+      # The newest UniXNU commit whose drivers still read the sheng- boot
+      # arguments this device repository passes. 47ec6a5 (2026-11-10) dropped the
+      # prefix in the scripts, patches and drivers, so main builds an image whose
+      # arguments the drivers would ignore until this repository adopts the names.
+      - uses: actions/checkout@v4
+        with:
+          repository: UniXNU/UniXNU
+          ref: 95ad78129203442c3c14c02336303adbddf8d0a3
+          path: UniXNU
+      - name: tools
+        run: |
+          brew install blacktop/tap/ipsw
+          ok=1
+          for t in hdiutil aea ipsw python3; do
+            command -v "$t" >/dev/null || { echo "missing tool: $t"; ok=0; }
+          done
+          [ "$ok" = 1 ]
+      - name: disk
+        run: df -h /
+      - name: select the configuration
+        working-directory: device
+        run: python3 ../UniXNU/unixnu defconfig sheng_defconfig -D .
+      - name: build userdata
+        working-directory: device
+        run: |
+          args=(-D . --os "${{ inputs.os }}")
+          if [ "${{ inputs.dry_run }}" = true ]; then args+=(--dry-run); fi
+          python3 ../UniXNU/unixnu build userdata "${args[@]}"
+      - name: upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: userdata-root-${{ inputs.os }}
+          retention-days: 1
+          if-no-files-found: warn
+          path: |
+            UniXNU/out/sheng/*/*/userdata/userdata-root.img
+            UniXNU/out/sheng/*/*/userdata/userdata-root.json
