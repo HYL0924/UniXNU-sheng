@@ -1,19 +1,20 @@
 name: images
 
-# Builds the sheng boot and userdata images from the UniXNU organization
-# repositories on macOS runners:
+# Builds the sheng boot and userdata images from the newest UniXNU organization
+# commits on macOS runners:
 #   device repository  UniXNU/UniXNU-sheng   main
-#   build tools        UniXNU/UniXNU         the newest commit the device's
-#                                            boot arguments match
+#   build tools        UniXNU/UniXNU         main
 #   UEFI firmware      UniXNU/uefi-sheng     main
-# 47ec6a5 (UniXNU, 2026-11-10) dropped the sheng- prefix from every boot
-# argument. The current device repository still passes sheng-* names, so 95ad781
-# (the commit before it) is the newest UniXNU the image can use. Revisit the pin
-# when the device repository adopts the unprefixed names.
+#
+# UniXNU/UniXNU-sheng keeps the three WCN7850 firmware binaries out of Git
+# (firmware/README.md: "Firmware binaries stay local; the repository contains the
+# manifest and packaging code"). The boot job fetches them from a public sheng
+# port and verifies every byte against this repository's firmware/wcn7850/
+# manifest.json before the build; a changed or truncated file stops the run.
 #
 # The run publishes images-27 (boot.img, payload.img, kernel.macho and the
-# manifest) and userdata-root-27 (the userdata-root.img and its report) for one
-# day each. Download them, then delete the run.
+# manifest) and userdata-root-27 (userdata-root.img and its report) for one day
+# each. Download them, then delete the run.
 
 on:
   push:
@@ -41,32 +42,37 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: UniXNU/UniXNU
-          ref: 95ad78129203442c3c14c02336303adbddf8d0a3
+          ref: main
           path: UniXNU
           submodules: recursive
-      # 95ad781 records turnip-frame-diagnostics.patch without the "new file
-      # mode" line of its first file, so git apply stops at "dev/null: No such
-      # file or directory". e7c359c adds the line; repair only that header.
-      - name: repair the pinned mesa patch header
-        run: |
-          python3 - <<'PY'
-          import pathlib
-          import sys
-          path = pathlib.Path('UniXNU/patches/mesa/turnip-frame-diagnostics.patch')
-          header = '+++ b/src/freedreno/vulkan/tu_frame_diagnostic.h\n'
-          text = path.read_text()
-          repaired = text.replace('--- /dev/null\n' + header, 'new file mode 100644\n--- /dev/null\n' + header, 1)
-          if repaired == text and 'new file mode 100644\n--- /dev/null\n' + header not in text:
-              sys.exit('mesa patch header not found in ' + str(path))
-          path.write_text(repaired)
-          print('repaired', path)
-          PY
       - uses: actions/checkout@v4
         with:
           repository: UniXNU/uefi-sheng
           ref: main
           path: uefi-sheng
           submodules: recursive
+      - name: provide the WCN7850 firmware inputs
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import pathlib
+          import urllib.request
+          root = pathlib.Path('device/firmware/wcn7850')
+          pins = json.loads((root / 'manifest.json').read_text())['files']
+          base = ('https://raw.githubusercontent.com/ks114514/UniXNU-sheng/'
+                  '6f4792fe416ea88ce0aab1bcd480b430f4807165/firmware/wcn7850/')
+          for name in ('amss.bin', 'm3.bin', 'board-2.bin'):
+              with urllib.request.urlopen(base + name, timeout=300) as source:
+                  data = source.read()
+              pin = pins[name]
+              digest = hashlib.sha256(data).hexdigest()
+              if len(data) != pin['bytes'] or digest != pin['sha256']:
+                  raise SystemExit(f'{name}: {len(data)} bytes sha256 {digest} '
+                                   f'does not match the pinned manifest')
+              (root / name).write_bytes(data)
+              print(name, len(data), digest)
+          PY
       - name: tools
         run: |
           brew install dtc llvm lld cmake mtools ninja glslang shaderc spirv-tools bison pkgconf rustup blacktop/tap/ipsw
@@ -116,7 +122,7 @@ jobs:
         run: |
           seed=UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/data.dbr
           if [ ! -f "$seed" ]; then
-            echo 'No saved Data seed in the cache. Dispatch the package workflow with init_data for a first installation.' >&2
+            echo 'No saved Data seed in the cache.' >&2
             exit 1
           fi
       - name: package
@@ -159,7 +165,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: UniXNU/UniXNU
-          ref: 95ad78129203442c3c14c02336303adbddf8d0a3
+          ref: main
           path: UniXNU
       - name: tools
         run: |
