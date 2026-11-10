@@ -43,9 +43,27 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: UniXNU/UniXNU
-          ref: 82b847c4ac3f68a57024b3082ffa3a03442defd9 # Wi-Fi runtime and Data firmware integration
+          ref: 95ad78129203442c3c14c02336303adbddf8d0a3 # newest UniXNU that still reads the sheng- boot arguments
           path: UniXNU
           submodules: recursive
+      # 95ad781 records turnip-frame-diagnostics.patch without the "new file mode"
+      # line of its first file, so git apply stops at "dev/null: No such file or
+      # directory". e7c359c in UniXNU main adds the line; this build keeps the
+      # newest commit the device's arguments match and repairs only that header.
+      - name: repair the pinned mesa patch header
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import sys
+          path = pathlib.Path('UniXNU/patches/mesa/turnip-frame-diagnostics.patch')
+          header = '+++ b/src/freedreno/vulkan/tu_frame_diagnostic.h\n'
+          text = path.read_text()
+          repaired = text.replace('--- /dev/null\n' + header, 'new file mode 100644\n--- /dev/null\n' + header, 1)
+          if repaired == text and 'new file mode 100644\n--- /dev/null\n' + header not in text:
+              sys.exit('mesa patch header not found in ' + str(path))
+          path.write_text(repaired)
+          print('repaired', path)
+          PY
       - uses: actions/checkout@v4
         with:
           repository: UniXNU/uefi-sheng
