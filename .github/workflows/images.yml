@@ -169,6 +169,34 @@ jobs:
           UNIXNU_UNIQUE_CHIP_ID: ${{ secrets.UNIXNU_UNIQUE_CHIP_ID }}
           GITHUB_TOKEN: ${{ github.token }}
         run: scripts/package.sh --os 27 --uefi ../uefi-sheng
+      - name: show the failing archive log
+        if: failure()
+        run: |
+          found=0
+          for f in UniXNU/out/sheng/*/*/logs/archive-*.log; do
+            if grep -q 'error:' "$f" 2>/dev/null; then
+              echo "==== $f"
+              grep -n -B6 -A16 'error:' "$f" | tail -n 160
+              found=1
+            fi
+          done
+          [ "$found" = 1 ] || echo 'no archive log carries an error: line'
+      # Redact the platform seed before the logs leave the runner.
+      - name: keep the build logs
+        if: failure()
+        env:
+          SEED: ${{ secrets.UNIXNU_UNIQUE_CHIP_ID }}
+        run: |
+          if [ -n "$SEED" ]; then
+            grep -rl -- "$SEED" UniXNU/out/sheng/*/*/logs 2>/dev/null | xargs -r sed -i "s/$SEED/<redacted>/g" || true
+          fi
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: build-logs-27
+          retention-days: 1
+          if-no-files-found: warn
+          path: UniXNU/out/sheng/*/*/logs/**
       - name: installation seed backup
         if: always()
         uses: actions/upload-artifact@v4
