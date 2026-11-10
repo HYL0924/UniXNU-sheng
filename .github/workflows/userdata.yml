@@ -6,6 +6,11 @@ name: userdata
 # userdata-root-<os> for one day, so download it and delete the run.
 
 on:
+  # The default branch carries no userdata workflow yet, and workflow_dispatch
+  # only runs files the default branch has. This branch trigger runs the build
+  # while the file is still only here.
+  push:
+    branches: [build/userdata-latest]
   workflow_dispatch:
     inputs:
       os:
@@ -58,14 +63,14 @@ jobs:
       - name: build userdata
         working-directory: device
         run: |
-          args=(-D . --os "${{ inputs.os }}")
+          args=(-D . --os "${{ inputs.os || '27' }}")
           if [ "${{ inputs.dry_run }}" = true ]; then args+=(--dry-run); fi
           python3 ../UniXNU/unixnu build userdata "${args[@]}"
       - name: upload
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: userdata-root-${{ inputs.os }}
+          name: userdata-root-${{ inputs.os || '27' }}
           retention-days: 1
           if-no-files-found: warn
           path: |
