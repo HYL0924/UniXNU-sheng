@@ -1,0 +1,189 @@
+name: images
+
+# Builds the sheng boot and userdata images from the UniXNU organization
+# repositories on macOS runners:
+#   device repository  UniXNU/UniXNU-sheng   main
+#   build tools        UniXNU/UniXNU         the newest commit the device's
+#                                            boot arguments match
+#   UEFI firmware      UniXNU/uefi-sheng     main
+# 47ec6a5 (UniXNU, 2026-11-10) dropped the sheng- prefix from every boot
+# argument. The current device repository still passes sheng-* names, so 95ad781
+# (the commit before it) is the newest UniXNU the image can use. Revisit the pin
+# when the device repository adopts the unprefixed names.
+#
+# The run publishes images-27 (boot.img, payload.img, kernel.macho and the
+# manifest) and userdata-root-27 (the userdata-root.img and its report) for one
+# day each. Download them, then delete the run.
+
+on:
+  push:
+    branches: [build/unixnu-sources]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  boot:
+    runs-on: macos-26
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: UniXNU/UniXNU-sheng
+          ref: main
+          path: device
+          submodules: recursive
+      - uses: actions/checkout@v4
+        with:
+          repository: UniXNU/UniXNU
+          ref: 95ad78129203442c3c14c02336303adbddf8d0a3
+          path: UniXNU
+          submodules: recursive
+      # 95ad781 records turnip-frame-diagnostics.patch without the "new file
+      # mode" line of its first file, so git apply stops at "dev/null: No such
+      # file or directory". e7c359c adds the line; repair only that header.
+      - name: repair the pinned mesa patch header
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import sys
+          path = pathlib.Path('UniXNU/patches/mesa/turnip-frame-diagnostics.patch')
+          header = '+++ b/src/freedreno/vulkan/tu_frame_diagnostic.h\n'
+          text = path.read_text()
+          repaired = text.replace('--- /dev/null\n' + header, 'new file mode 100644\n--- /dev/null\n' + header, 1)
+          if repaired == text and 'new file mode 100644\n--- /dev/null\n' + header not in text:
+              sys.exit('mesa patch header not found in ' + str(path))
+          path.write_text(repaired)
+          print('repaired', path)
+          PY
+      - uses: actions/checkout@v4
+        with:
+          repository: UniXNU/uefi-sheng
+          ref: main
+          path: uefi-sheng
+          submodules: recursive
+      - name: tools
+        run: |
+          brew install dtc llvm lld cmake mtools ninja glslang shaderc spirv-tools bison pkgconf rustup blacktop/tap/ipsw
+          {
+            echo "$HOME/.cargo/bin"
+            echo "/opt/homebrew/opt/llvm/bin"
+            echo "/opt/homebrew/opt/lld/bin"
+            echo "/opt/homebrew/opt/bison/bin"
+          } >> "$GITHUB_PATH"
+          rustup toolchain install 1.98.0 --profile minimal --component rust-src
+          # Fail fast, naming the tool, before forty minutes of build.
+          ok=1
+          for t in clang xcodebuild make git ninja cmake dtc fdtget fdtput aea compression_tool \
+                   mformat mcopy ipsw; do
+            command -v "$t" >/dev/null || { echo "missing tool: $t"; ok=0; }
+          done
+          for t in lld-link llvm-lib llvm-rc llvm-nm llvm-objcopy; do
+            [ -f "/opt/homebrew/opt/llvm/bin/$t" ] || [ -f "/opt/homebrew/opt/lld/bin/$t" ] || { echo "missing tool: $t"; ok=0; }
+          done
+          [ "$ok" = 1 ]
+      - name: platform seed
+        env:
+          seed: ${{ secrets.UNIXNU_UNIQUE_CHIP_ID }}
+        run: |
+          if ! [[ "$seed" =~ ^[0-9a-fA-F]{8}$ ]]; then
+            echo 'Set the repository secret UNIXNU_UNIQUE_CHIP_ID: the platform seed of the device, 8 hex digits.' >&2
+            exit 1
+          fi
+      - name: seed cache identity
+        id: seed-key
+        env:
+          SEED: ${{ secrets.UNIXNU_UNIQUE_CHIP_ID }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, os
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              out.write('key=data-seed-v1-' + hashlib.sha256(os.environ['SEED'].encode()).hexdigest()[:16] + '\n')
+          PY
+      - uses: actions/cache/restore@v4
+        id: data-cache
+        with:
+          path: |
+            UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/data.dbr
+            UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/inputs.json
+          key: ${{ steps.seed-key.outputs.key }}-27
+      - name: require the saved Data seed
+        run: |
+          seed=UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/data.dbr
+          if [ ! -f "$seed" ]; then
+            echo 'No saved Data seed in the cache. Dispatch the package workflow with init_data for a first installation.' >&2
+            exit 1
+          fi
+      - name: package
+        working-directory: device
+        env:
+          UNIXNU_UNIQUE_CHIP_ID: ${{ secrets.UNIXNU_UNIQUE_CHIP_ID }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: scripts/package.sh --os 27 --uefi ../uefi-sheng
+      - name: installation seed backup
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: installation-seed-27
+          retention-days: 1
+          if-no-files-found: warn
+          path: |
+            UniXNU/out/sheng/*/*/runtime/data.dbr
+            UniXNU/out/sheng/*/*/runtime/inputs.json
+      - name: images
+        uses: actions/upload-artifact@v4
+        with:
+          name: images-27
+          retention-days: 1
+          if-no-files-found: error
+          path: |
+            UniXNU/out/sheng/*/*/boot/boot.img
+            UniXNU/out/sheng/*/*/payload/payload.img
+            UniXNU/out/sheng/*/*/kernel/kernel.macho
+            UniXNU/out/sheng/*/*/package.manifest.json
+
+  userdata:
+    runs-on: macos-26
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: UniXNU/UniXNU-sheng
+          ref: main
+          path: device
+      - uses: actions/checkout@v4
+        with:
+          repository: UniXNU/UniXNU
+          ref: 95ad78129203442c3c14c02336303adbddf8d0a3
+          path: UniXNU
+      - name: tools
+        run: |
+          brew install blacktop/tap/ipsw
+          ok=1
+          for t in hdiutil aea ipsw python3; do
+            command -v "$t" >/dev/null || { echo "missing tool: $t"; ok=0; }
+          done
+          [ "$ok" = 1 ]
+      - name: disk
+        run: df -h /
+      - name: select the configuration
+        working-directory: device
+        run: python3 ../UniXNU/unixnu defconfig sheng_ipados27_defconfig -D .
+      - name: build userdata
+        working-directory: device
+        run: python3 ../UniXNU/unixnu build userdata -D . --os 27
+      - name: upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: userdata-root-27
+          retention-days: 1
+          if-no-files-found: warn
+          path: |
+            UniXNU/out/sheng/*/*/userdata/userdata-root.img
+            UniXNU/out/sheng/*/*/userdata/userdata-root.json
