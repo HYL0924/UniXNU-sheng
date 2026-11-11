@@ -116,9 +116,9 @@ jobs:
           import sys
           path = pathlib.Path('device/board.toml')
           text = path.read_text()
-          if '"data_gib" = 215' not in text:
+          if 'data_gib = 215' not in text:
               sys.exit('board.toml data_gib 215 not found')
-          text = text.replace('"data_gib" = 215', '"data_gib" = 88', 1)
+          text = text.replace('data_gib = 215', 'data_gib = 88', 1)
           if '"last_lba" = 64007162' not in text:
               sys.exit('board.toml last_lba 64007162 not found')
           text = text.replace('"last_lba" = 64007162', '"last_lba" = 30669818', 1)
