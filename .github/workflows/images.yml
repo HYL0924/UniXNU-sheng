@@ -230,24 +230,16 @@ jobs:
           import pathlib
           dsc = pathlib.Path('uefi-sheng/Platforms/Xiaomi/shengPkg/sheng.dsc')
           text = dsc.read_text()
-          component = '  UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.inf\n'
-          if component not in text:
-              raise SystemExit('sheng.dsc: ramdisk component changed')
-          text = text.replace(component,
-              '  UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.inf {\n'
-              '    <LibraryClasses>\n'
-              '      NULL|MdeModulePkg/Library/LzmaCustomDecompressLib/LzmaCustomDecompressLib.inf\n'
-              '  }\n')
+          if '[LibraryClasses.common.DXE_DRIVER]' in text:
+              raise SystemExit('sheng.dsc already has a DXE_DRIVER library section')
           inc = pathlib.Path('uefi-sheng/Silicon/Qualcomm/KailuaPkg/KailuaPkg.dsc.inc')
           everything = text + (inc.read_text() if inc.is_file() else '')
+          block = ('\n[LibraryClasses.common.DXE_DRIVER]\n'
+                   '  NULL|MdeModulePkg/Library/LzmaCustomDecompressLib/LzmaCustomDecompressLib.inf\n')
           if 'ExtractGuidedSectionLib|' not in everything:
-              anchor = '[LibraryClasses]\n'
-              if anchor not in text:
-                  raise SystemExit('sheng.dsc: no LibraryClasses section')
-              text = text.replace(anchor,
-                  '[LibraryClasses]\n'
-                  '  ExtractGuidedSectionLib|MdePkg/Library/DxeExtractGuidedSectionLib/DxeExtractGuidedSectionLib.inf\n', 1)
-          dsc.write_text(text)
+              block += ('  ExtractGuidedSectionLib|MdePkg/Library/DxeExtractGuidedSectionLib/'
+                        'DxeExtractGuidedSectionLib.inf\n')
+          dsc.write_text(text.rstrip('\n') + '\n' + block)
           print('sheng.dsc: LZMA ramdisk support wired in')
           PY
       - name: record the source revisions
