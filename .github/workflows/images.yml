@@ -224,8 +224,8 @@ jobs:
       # uncompressed path for every other build.
       - name: add the compressed initrd path to the ramdisk driver
         run: |
-          cp device/.github/patches/UniXNURamDiskDxe-lzma.c \
-             UniXNU/package/UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.c
+          curl -fsSL "https://raw.githubusercontent.com/HYL0924/UniXNU-sheng/${GITHUB_SHA}/.github/patches/UniXNURamDiskDxe-lzma.c" -o /tmp/ramdisk-lzma.c
+          cp /tmp/ramdisk-lzma.c UniXNU/package/UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.c
           python3 - <<'PY'
           import pathlib
           dsc = pathlib.Path('uefi-sheng/Platforms/Xiaomi/shengPkg/sheng.dsc')
