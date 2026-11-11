@@ -218,6 +218,38 @@ jobs:
           path.write_text(text.rstrip('\n') + '\n\n["bootimg"."image"]\n"header_version" = 4\n')
           print('board.toml: [bootimg.image] header_version = 4')
           PY
+      # The sheng payload is ~136 MiB and the ABL only hands the firmware the
+      # vendor_boot vendor ramdisk, whose 96 MiB partition is too small. Teach
+      # UniXNURamDiskDxe to expand an LZMA-compressed initrd, keeping the
+      # uncompressed path for every other build.
+      - name: add the compressed initrd path to the ramdisk driver
+        run: |
+          cp device/.github/patches/UniXNURamDiskDxe-lzma.c \
+             UniXNU/package/UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.c
+          python3 - <<'PY'
+          import pathlib
+          dsc = pathlib.Path('uefi-sheng/Platforms/Xiaomi/shengPkg/sheng.dsc')
+          text = dsc.read_text()
+          component = '  UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.inf\n'
+          if component not in text:
+              raise SystemExit('sheng.dsc: ramdisk component changed')
+          text = text.replace(component,
+              '  UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.inf {\n'
+              '    <LibraryClasses>\n'
+              '      NULL|MdeModulePkg/Library/LzmaCustomDecompressLib/LzmaCustomDecompressLib.inf\n'
+              '  }\n')
+          inc = pathlib.Path('uefi-sheng/Silicon/Qualcomm/KailuaPkg/KailuaPkg.dsc.inc')
+          everything = text + (inc.read_text() if inc.is_file() else '')
+          if 'ExtractGuidedSectionLib|' not in everything:
+              anchor = '[LibraryClasses]\n'
+              if anchor not in text:
+                  raise SystemExit('sheng.dsc: no LibraryClasses section')
+              text = text.replace(anchor,
+                  '[LibraryClasses]\n'
+                  '  ExtractGuidedSectionLib|MdePkg/Library/DxeExtractGuidedSectionLib/DxeExtractGuidedSectionLib.inf\n', 1)
+          dsc.write_text(text)
+          print('sheng.dsc: LZMA ramdisk support wired in')
+          PY
       - name: record the source revisions
         run: |
           git -C device rev-parse HEAD
