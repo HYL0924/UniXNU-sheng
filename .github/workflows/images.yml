@@ -105,30 +105,28 @@ jobs:
             echo 'Set the repository secret UNIXNU_UNIQUE_CHIP_ID: the platform seed of the device, 8 hex digits.' >&2
             exit 1
           fi
-      - name: seed cache identity
-        id: seed-key
-        env:
-          SEED: ${{ secrets.UNIXNU_UNIQUE_CHIP_ID }}
+      # This unit's userdata is 105.2 GiB, not the 232 GiB the board file was
+      # written for. Shrink the Data store to 88 GiB and record the real last
+      # LBA so the capacity check matches, then create a fresh seed from the
+      # IPSW (--init-data) instead of the cached 215 GiB one.
+      - name: fit the Data store to this unit's userdata
         run: |
           python3 - <<'PY'
-          import hashlib, os
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
-              out.write('key=data-seed-v1-' + hashlib.sha256(os.environ['SEED'].encode()).hexdigest()[:16] + '\n')
+          import pathlib
+          import sys
+          path = pathlib.Path('device/board.toml')
+          text = path.read_text()
+          if '"data_gib" = 215' not in text:
+              sys.exit('board.toml data_gib 215 not found')
+          text = text.replace('"data_gib" = 215', '"data_gib" = 88', 1)
+          if '"last_lba" = 64007162' not in text:
+              sys.exit('board.toml last_lba 64007162 not found')
+          text = text.replace('"last_lba" = 64007162', '"last_lba" = 30669818', 1)
+          path.write_text(text)
+          print('board.toml: data_gib 88, userdata last_lba 30669818')
           PY
-      - uses: actions/cache/restore@v4
-        id: data-cache
-        with:
-          path: |
-            UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/data.dbr
-            UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/inputs.json
-          key: ${{ steps.seed-key.outputs.key }}-27
-      - name: require the saved Data seed
-        run: |
-          seed=UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/data.dbr
-          if [ ! -f "$seed" ]; then
-            echo 'No saved Data seed in the cache.' >&2
-            exit 1
-          fi
+          rm -f UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/data.dbr
+          rm -f UniXNU/out/sheng/ipados-27.0.1-24A446/sheng_ipados27/runtime/inputs.json
       # build-wifi-userspace.py builds the native supplicant from the locked
       # Linux, FreeBSD and wpa_supplicant sources under drivers/Ath12kWifi/deps.
       # fetch-sources.py clones them, but asks sparse-checkout for cone-mode
@@ -230,7 +228,7 @@ jobs:
         env:
           UNIXNU_UNIQUE_CHIP_ID: ${{ secrets.UNIXNU_UNIQUE_CHIP_ID }}
           GITHUB_TOKEN: ${{ github.token }}
-        run: scripts/package.sh --os 27 --uefi ../uefi-sheng
+        run: scripts/package.sh --os 27 --uefi ../uefi-sheng --init-data
       - name: show the failing archive log
         if: failure()
         run: |
