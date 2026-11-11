@@ -228,18 +228,44 @@ jobs:
           cp /tmp/ramdisk-lzma.c UniXNU/package/UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.c
           python3 - <<'PY'
           import pathlib
-          dsc = pathlib.Path('uefi-sheng/Platforms/Xiaomi/shengPkg/sheng.dsc')
-          text = dsc.read_text()
-          if '[LibraryClasses.common.DXE_DRIVER]' in text:
-              raise SystemExit('sheng.dsc already has a DXE_DRIVER library section')
+
+
+          def add_libraries(path, section):
+              dsc = pathlib.Path(path)
+              text = dsc.read_text()
+              add = ''
+              if 'NULL|MdeModulePkg/Library/LzmaCustomDecompressLib/LzmaCustomDecompressLib.inf' not in text:
+                  add += '  NULL|MdeModulePkg/Library/LzmaCustomDecompressLib/LzmaCustomDecompressLib.inf\n'
+              if 'ExtractGuidedSectionLib|' not in text:
+                  add += ('  ExtractGuidedSectionLib|MdePkg/Library/DxeExtractGuidedSectionLib/'
+                          'DxeExtractGuidedSectionLib.inf\n')
+              if add:
+                  if section + '\n' not in text:
+                      raise SystemExit(f'{path}: no {section} section')
+                  text = text.replace(section + '\n', section + '\n' + add, 1)
+                  dsc.write_text(text)
+              print(path, 'patched' if add else 'already patched')
+
+
+          # build.sh compiles the EFI modules with this standalone DSC.
+          add_libraries('UniXNU/package/UniXNUPkg/UniXNUPkg.dsc', '[LibraryClasses]')
+
+          # The firmware packaging step lists the same driver in the platform DSC.
+          sheng = pathlib.Path('uefi-sheng/Platforms/Xiaomi/shengPkg/sheng.dsc')
+          text = sheng.read_text()
+          block = ''
+          if 'NULL|MdeModulePkg/Library/LzmaCustomDecompressLib/LzmaCustomDecompressLib.inf' not in text:
+              block += '  NULL|MdeModulePkg/Library/LzmaCustomDecompressLib/LzmaCustomDecompressLib.inf\n'
           inc = pathlib.Path('uefi-sheng/Silicon/Qualcomm/KailuaPkg/KailuaPkg.dsc.inc')
           everything = text + (inc.read_text() if inc.is_file() else '')
-          block = ('\n[LibraryClasses.common.DXE_DRIVER]\n'
-                   '  NULL|MdeModulePkg/Library/LzmaCustomDecompressLib/LzmaCustomDecompressLib.inf\n')
           if 'ExtractGuidedSectionLib|' not in everything:
               block += ('  ExtractGuidedSectionLib|MdePkg/Library/DxeExtractGuidedSectionLib/'
                         'DxeExtractGuidedSectionLib.inf\n')
-          dsc.write_text(text.rstrip('\n') + '\n' + block)
+          if block:
+              if '[LibraryClasses.common.DXE_DRIVER]' not in text:
+                  text = text.rstrip('\n') + '\n\n[LibraryClasses.common.DXE_DRIVER]\n'
+              text = text.rstrip('\n') + '\n' + block
+              sheng.write_text(text)
           print('sheng.dsc: LZMA ramdisk support wired in')
           PY
       - name: record the source revisions
