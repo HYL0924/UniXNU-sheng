@@ -177,6 +177,12 @@ jobs:
           path.write_text(text.replace('timeout=1800', 'timeout=7200'))
           print('cargo timeout raised to 7200 s')
           PY
+      # build-gop-legacy-display-27.py aborts without the keyboard controller's
+      # RAM image; proprietary-files.txt pins it under the Keyboard section and
+      # extract-files.py fetches it from the listed public mirror by SHA-256.
+      - name: extract the keyboard firmware input
+        working-directory: device
+        run: python3 scripts/extract-files.py --section Keyboard
       - name: package
         working-directory: device
         env:
