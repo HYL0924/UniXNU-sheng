@@ -204,6 +204,22 @@ jobs:
           path.write_text(repaired)
           print('repaired', path)
           PY
+      # The Xiaomi ABL on this unit rejects Android boot header v0 with
+      # "Failed to load/authenticate boot image: Load Error" and only loads a
+      # v4 header. uefi-sheng's Resources/Configs/sheng.toml asks for v0, so
+      # override the header version for this build.
+      - name: use the boot header version the ABL loads
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import sys
+          path = pathlib.Path('device/board.toml')
+          text = path.read_text()
+          if '["bootimg"."image"]' in text:
+              sys.exit('board.toml already carries a bootimg.image table')
+          path.write_text(text.rstrip('\n') + '\n\n["bootimg"."image"]\n"header_version" = 4\n')
+          print('board.toml: [bootimg.image] header_version = 4')
+          PY
       - name: record the source revisions
         run: |
           git -C device rev-parse HEAD
