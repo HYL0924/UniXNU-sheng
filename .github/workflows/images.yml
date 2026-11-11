@@ -18,7 +18,7 @@ name: images
 
 on:
   push:
-    branches: [build/unixnu-sources]
+    branches: [build/unixnu-sources, build/ios-pairing]
   workflow_dispatch:
 
 permissions:
@@ -36,13 +36,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: UniXNU/UniXNU-sheng
-          ref: main
+          # The newest upstream device commit whose iPadOS link does not need
+          # macOS-only kernel symbols; main since 67e0248 does.
+          ref: a68ee4ee67cc71792fbf519de7e3e28072c717b5
           path: device
           submodules: recursive
       - uses: actions/checkout@v4
         with:
           repository: UniXNU/UniXNU
-          ref: main
+          # The same day's UniXNU: before 47ec6a5 drops the sheng- boot argument
+          # names this device still passes.
+          ref: 95ad78129203442c3c14c02336303adbddf8d0a3
           path: UniXNU
           submodules: recursive
       - uses: actions/checkout@v4
@@ -183,6 +187,23 @@ jobs:
       - name: extract the keyboard firmware input
         working-directory: device
         run: python3 scripts/extract-files.py --section Keyboard
+      # 95ad781 records turnip-frame-diagnostics.patch without the "new file
+      # mode" line of its first file, so git apply stops at "dev/null: No such
+      # file or directory". e7c359c in UniXNU adds the line.
+      - name: repair the pinned mesa patch header
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import sys
+          path = pathlib.Path('UniXNU/patches/mesa/turnip-frame-diagnostics.patch')
+          header = '+++ b/src/freedreno/vulkan/tu_frame_diagnostic.h\n'
+          text = path.read_text()
+          repaired = text.replace('--- /dev/null\n' + header, 'new file mode 100644\n--- /dev/null\n' + header, 1)
+          if repaired == text and 'new file mode 100644\n--- /dev/null\n' + header not in text:
+              sys.exit('mesa patch header not found in ' + str(path))
+          path.write_text(repaired)
+          print('repaired', path)
+          PY
       - name: record the source revisions
         run: |
           git -C device rev-parse HEAD
@@ -251,12 +272,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: UniXNU/UniXNU-sheng
-          ref: main
+          ref: a68ee4ee67cc71792fbf519de7e3e28072c717b5
           path: device
       - uses: actions/checkout@v4
         with:
           repository: UniXNU/UniXNU
-          ref: main
+          ref: 95ad78129203442c3c14c02336303adbddf8d0a3
           path: UniXNU
       - name: tools
         run: |
