@@ -183,6 +183,11 @@ jobs:
       - name: extract the keyboard firmware input
         working-directory: device
         run: python3 scripts/extract-files.py --section Keyboard
+      - name: record the source revisions
+        run: |
+          git -C device rev-parse HEAD
+          git -C UniXNU rev-parse HEAD
+          git -C uefi-sheng rev-parse HEAD
       - name: package
         working-directory: device
         env:
