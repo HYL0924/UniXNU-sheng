@@ -87,9 +87,15 @@ struct Note {   /* what the event thread hands to the sink */
     uint32_t event;
 };
 
-Media gTable[MaxSessions];
+struct MediaStorage {
+    Media table[MaxSessions];
+    Note ring[RingSize];
+};
+static_assert(__is_trivial(MediaStorage), "media storage must remain zero-initializable");
+MediaStorage *gMediaStorage;
+#define gTable (gMediaStorage->table)
+#define gRing (gMediaStorage->ring)
 uint32_t gNextId = 1;
-Note gRing[RingSize];
 uint32_t gHead, gTail;          /* under the device's lock */
 bool gThreadStarted;
 void (*gSink)(void *, const uint8_t *, uint32_t);
@@ -97,6 +103,7 @@ void *gSinkContext;
 
 IOLock *lock() { return QcomIrisDeviceLock(); }
 Media *find(uint32_t id) {
+    if (!gMediaStorage) return nullptr;
     for (Media &m : gTable) if (m.used && m.id == id) return &m;
     return nullptr;
 }
@@ -115,6 +122,7 @@ void cacheSync(IOMemoryDescriptor *memory, uint64_t length) {
 
 /* The lock held: a note for the event thread. A full ring drops the note and fails the session, which the client then closes. */
 void note(const Note &n) {
+    if (!gMediaStorage) return;
     if (gHead - gTail >= RingSize) {
         Media *m = find(n.session);
         if (m) m->failed = true;
@@ -162,6 +170,23 @@ void eventThread(void *, wait_result_t) {
         }
         IOLockLock(l);
     }
+}
+
+/* The device lock is held, in task context. IRQ callbacks only consume these
+ * buffers; they never allocate. Capacities and the boot lifetime are unchanged. */
+bool media_storage_ready_locked() {
+    if (!gMediaStorage) {
+        auto *storage = static_cast<MediaStorage *>(IOMallocZero(sizeof(MediaStorage)));
+        if (!storage) return false;
+        gMediaStorage = storage;
+    }
+    if (gSink && !gThreadStarted) {
+        thread_t thread;
+        if (kernel_thread_start(eventThread, nullptr, &thread) != KERN_SUCCESS) return false;
+        gThreadStarted = true;
+        thread_deallocate(thread);
+    }
+    return true;
 }
 
 /* ---- the firmware's callbacks (the lock held, the interrupt thread) ---- */
@@ -430,18 +455,16 @@ void iris_media_set_sink(unsigned device, void (*sink)(void *, const uint8_t *, 
     IOLockLock(lock());
     gSink = sink;
     gSinkContext = context;
-    const bool start = !gThreadStarted;
-    gThreadStarted = true;
+    // Retain a pending sink on allocation/thread failure. open() retries and
+    // reports ENOMEM until storage and its event worker are both available.
+    (void)media_storage_ready_locked();
     IOLockUnlock(lock());
-    if (start) {
-        thread_t thread;
-        if (kernel_thread_start(eventThread, nullptr, &thread) == KERN_SUCCESS) thread_deallocate(thread);
-    }
 }
 
 int iris_media_open(unsigned device, uint32_t *session) {
     if (!iris_media_is_up(device) || !session) return Enodev;
     IOLockLock(lock());
+    if (!media_storage_ready_locked()) { IOLockUnlock(lock()); return Enomem; }
     Media *m = nullptr;
     for (Media &candidate : gTable) if (!candidate.used) { m = &candidate; break; }
     if (m) {

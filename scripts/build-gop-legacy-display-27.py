@@ -300,7 +300,7 @@ def compile_cpp(src, dst, extra=()):
         elif not value.startswith('-W'):
             cmd.append(value)
         i += 1
-    cmd += ['-Wall', '-Wextra', '-Werror', '-Wno-unused-parameter', '-Wno-unnecessary-virtual-specifier', '-Wno-c99-designator',
+    cmd += ['-Os', '-Wall', '-Wextra', '-Werror', '-Wno-unused-parameter', '-Wno-unnecessary-virtual-specifier', '-Wno-c99-designator',
             '-Wno-reorder-init-list', '-Wno-deprecated-enum-enum-conversion', '-I', str(ROOT / '.cache/xnu-work/osfmk'), *extra]
     run(cmd, cwd=r['directory'])
 
@@ -322,7 +322,7 @@ def compile_c(src, dst, recipe='osfmk/DEVELOPMENT/startup.o.json'):
         elif not value.startswith('-W'):
             cmd.append(value)
         i += 1
-    cmd += ['-Wall', '-Wextra', '-Werror', '-mgeneral-regs-only', '-I', str(ROOT / '.cache/xnu-work/osfmk'), '-I', str(ROOT / 'kits/sheng')]
+    cmd += ['-Os', '-Wall', '-Wextra', '-Werror', '-mgeneral-regs-only', '-I', str(ROOT / '.cache/xnu-work/osfmk'), '-I', str(ROOT / 'kits/sheng')]
     run(cmd, cwd=rc['directory'])
 
 

@@ -7,6 +7,7 @@
 #include <kern/clock.h>
 #include <pexpert/pexpert.h>
 #include <kern/misc_protos.h>
+#include <kern/sched_prim.h>
 #include <machine/machine_routines.h>
 #include <arm/thread.h>
 #include <arm/cpu_data_internal.h>
@@ -45,7 +46,37 @@
 extern void proc_name(int pid, char *buf, int size);   // bsd/sys/proc.h; the header itself clashes with the Mach types used here
 extern int proc_selfpid(void);
 #include "BootUiTraceDetails.h"
-static struct bt_entry samples[BT_MAX_THREADS];
+// CPU-only capture buffers belong to the boot lifetime but need not occupy
+// the kernel image's constrained static data window. Allocate before task locks.
+#define BT_KCPU_SEEN 1024
+struct bt_kcpu_seen_entry {uint64_t tid,time;uint32_t scan;};
+struct bt_trace_storage {
+ struct bt_groups groups[2];
+ struct bt_entry samples[BT_MAX_THREADS];
+ struct bt_kcpu_seen_entry seen[BT_KCPU_SEEN];
+};
+void *IOMallocAligned(vm_size_t,vm_offset_t);
+void IOFreeAligned(void *,vm_size_t);
+// TRACE_STORAGE_HELPERS_BEGIN
+static struct bt_trace_storage *bt_trace_data;
+static struct bt_trace_storage *bt_trace_storage_get(void) {
+ return __atomic_load_n(&bt_trace_data,__ATOMIC_ACQUIRE);
+}
+static int bt_trace_storage_prepare(void) {
+ if(bt_trace_storage_get())return 1;
+ if(!preemption_enabled() || !ml_get_interrupts_enabled() || ml_at_interrupt_context())return 0;
+ struct bt_trace_storage *candidate=IOMallocAligned(sizeof(*candidate),4096);
+ if(!candidate)return bt_trace_storage_get()!=NULL;
+ memset(candidate,0,sizeof(*candidate));
+ struct bt_trace_storage *expected=NULL;
+ if(!__atomic_compare_exchange_n(&bt_trace_data,&expected,candidate,0,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE))
+  IOFreeAligned(candidate,sizeof(*candidate));
+ return 1;
+}
+// TRACE_STORAGE_HELPERS_END
+#define samples (bt_trace_storage_get()->samples)
+#define draft (bt_trace_storage_get()->groups[0])
+#define published (bt_trace_storage_get()->groups[1])
 // Hot threads: the context-switch rate of each sampled thread between two snapshots, so a thread that is woken hundreds of times a second
 // shows even though every single stack sample finds it idle in mach_msg.
 // CPU rows: each thread's run time (user and system, xnu's recount) between two snapshots, so the threads that actually burn a frame's time
@@ -86,7 +117,7 @@ static struct bt_hotrow hot_draft[BT_ROLES][BT_HOT],hot_published[BT_ROLES][BT_H
 #define BT_TRAPPED 3
 static struct bt_hotrow trap_draft[BT_ROLES][BT_TRAPPED],trap_published[BT_ROLES][BT_TRAPPED];
 static struct bt_hotrow cpu_draft[BT_ROLES][BT_CPU],cpu_published[BT_ROLES][BT_CPU];
-static struct bt_groups draft,published;
+
 static unsigned trace_lock;
 static char draft_names[BT_ROLES][32],published_names[BT_ROLES][32];
 static unsigned draft_pid[BT_ROLES],published_pid[BT_ROLES],draft_slide[BT_ROLES],published_slide[BT_ROLES];
@@ -96,6 +127,8 @@ unsigned boot_ui_trace_ready,boot_ui_trace_groups,boot_ui_trace_threads,boot_ui_
 volatile unsigned boot_ui_trace_phase,boot_ui_trace_index;
 
 void boot_ui_trace_begin(void) {
+ if(!bt_trace_storage_prepare()){boot_ui_trace_ready=0;return;}
+
  memset(draft_main,0,sizeof(draft_main));memset(hot_draft,0,sizeof(hot_draft));memset(trap_draft,0,sizeof(trap_draft));memset(cpu_draft,0,sizeof(cpu_draft));
  memset(&draft,0,sizeof(draft));memset(draft_pid,0,sizeof(draft_pid));
  memset(draft_slide,0,sizeof(draft_slide));memset(draft_names,0,sizeof(draft_names));
@@ -114,6 +147,8 @@ static void lookup_peer(struct bt_entry *e,ipc_space_t space) {
  e->peer=ipc_port_get_receiver_task_locked(port,NULL);e->peer_code=(e->regs[1]&1)?0:5;ip_mq_unlock(port);
 }
 void boot_ui_trace_task(task_t task,unsigned index,int pid,const char *name,unsigned slide) {
+ if(!bt_trace_storage_get())return;
+
  if(!ml_get_interrupts_enabled()){++draft_busy;return;}
  if(index<1 || index>BT_ROLES)return;
  unsigned role=index-1;
@@ -227,6 +262,8 @@ void boot_ui_trace_task(task_t task,unsigned index,int pid,const char *name,unsi
  vm_map_deallocate(map);boot_ui_trace_phase=1;
 }
 void boot_ui_trace_publish(void) {
+ if(!bt_trace_storage_get())return;
+
  if(!__atomic_exchange_n(&trace_lock,1,__ATOMIC_ACQUIRE)) {
   published=draft;memcpy(published_main,draft_main,sizeof(draft_main));memcpy(hot_published,hot_draft,sizeof(hot_draft));memcpy(trap_published,trap_draft,sizeof(trap_draft));memcpy(cpu_published,cpu_draft,sizeof(cpu_draft));memcpy(published_pid,draft_pid,sizeof(draft_pid));
   memcpy(published_slide,draft_slide,sizeof(draft_slide));memcpy(published_names,draft_names,sizeof(draft_names));
@@ -241,6 +278,8 @@ void boot_ui_trace_publish(void) {
 // chain (idle workqueue threads) are left out. Raw hex user addresses; cache+ is the shared cache slide and image the main executable's
 // header. Returns the number of rows written (0 while the trace is being published).
 unsigned boot_ui_trace_role_rows(unsigned role,char rows[][120],unsigned max,unsigned detail) {
+ if(!bt_trace_storage_get())return 0;
+
  if(role>=BT_ROLES || max<6 || __atomic_exchange_n(&trace_lock,1,__ATOMIC_ACQUIRE))return 0;
  unsigned n=0;const struct bt_main *m=&published_main[role];const struct bt_entry *e=&m->entry;const char c=bt_role_char(role,m);
  if(m->pid && detail) {
@@ -305,6 +344,8 @@ static unsigned hot_row(const struct bt_hotrow *r,unsigned pid,char rows[][120],
 // the threads inside a Mach trap other than mach_msg (TRP rows): thread id, Mach peer, PC, LR, frames, kernel frames and trap arguments.
 // Returns the number of rows (0 while the trace is being published).
 unsigned boot_ui_trace_hot_rows(char rows[][120],unsigned max) {
+ if(!bt_trace_storage_get())return 0;
+
  if(__atomic_exchange_n(&trace_lock,1,__ATOMIC_ACQUIRE))return 0;
  unsigned n=0;
  for(unsigned role=0;role<BT_ROLES;++role)
@@ -319,6 +360,8 @@ unsigned boot_ui_trace_hot_rows(char rows[][120],unsigned max) {
 // The process a traced role is waiting on: the first of its thread groups that sends a Mach message to another task (peer above launchd,
 // not itself). 0 = none, -1 = the trace is being published (keep the previous answer).
 int boot_ui_trace_role_peer(unsigned role) {
+ if(!bt_trace_storage_get())return 0;
+
  if(role>=BT_ROLES || __atomic_exchange_n(&trace_lock,1,__ATOMIC_ACQUIRE))return -1;
  const char c=bt_role_char(role,&published_main[role]);int own=(int)published_pid[role],found=0;
  for(unsigned g=0;g<published.count && !found;++g) {
@@ -329,6 +372,8 @@ int boot_ui_trace_role_peer(unsigned role) {
  return own?found:0;
 }
 void boot_ui_trace_snapshot(unsigned seconds) {
+ if(!bt_trace_storage_get()){boot_ui_trace_ready=0;return;}
+
  if(__atomic_exchange_n(&trace_lock,1,__ATOMIC_ACQUIRE))return;
  unsigned groups_pages=(published.count+BT_ROWS-1)/BT_ROWS;if(!groups_pages)groups_pages=1;
  unsigned main_pages=0;
@@ -347,6 +392,9 @@ void boot_ui_trace_snapshot(unsigned seconds) {
  boot_ui_trace_threads=published.threads;boot_ui_trace_pages=pages;
  __atomic_store_n(&trace_lock,0,__ATOMIC_RELEASE);
 }
+#undef samples
+#undef draft
+#undef published
 // One kernel thread found by its name (a driver asks for its network input thread when that stops taking packets): state, block hint,
 // priority, wait event and up to BT_KFRAMES kernel return addresses, unslid where they lie in the kernel. 0 when found, -1 when busy or absent.
 int boot_kthread_report(const char *name,char *out,unsigned size) {
@@ -730,18 +778,19 @@ unsigned boot_stuck_rows(char rows[][120],unsigned max) {
 // Busiest kernel threads: CPU time each kernel_task thread used since the last scan, the top BT_KCPU by time, as
 // "name(or tid) ms" over the interval. macOS run47: top showed kernel_task at 178 % of a CPU on an idle desktop.
 #define BT_KCPU 8
-#define BT_KCPU_SEEN 1024
+
 struct bt_kcpu {uint64_t tid,used;char name[28];};
 static struct bt_kcpu kcpu_published[BT_KCPU];
 static unsigned kcpu_published_count,kcpu_interval,kcpu_total_ms;
 // The time each thread had at the last scan, hashed by thread id with linear probing. An entry no scan has refreshed since the one
 // before the current is free again (its thread ended), so two live threads with the same hash each keep a slot.
 #define BT_KCPU_PROBE 16
-static struct {uint64_t tid,time;uint32_t scan;} kcpu_seen[BT_KCPU_SEEN];
+#define kcpu_seen (bt_trace_storage_get()->seen)
 void boot_kcpu_scan(unsigned seconds) {
  static unsigned last;
  if(seconds<last+10)return;
  const unsigned interval=seconds-last;
+ if(!bt_trace_storage_prepare())return;
  if(!task_lock_try(kernel_task))return;
  static uint32_t scan;
  last=seconds;++scan;
@@ -779,6 +828,7 @@ void boot_kcpu_scan(unsigned seconds) {
  memcpy(kcpu_published,top,sizeof(kcpu_published));kcpu_published_count=BT_KCPU;kcpu_interval=interval;
  kcpu_total_ms=frequency?(unsigned)(total*1000/frequency):0;
 }
+#undef kcpu_seen
 unsigned boot_kcpu_rows(char rows[][120],unsigned max) {
  unsigned n=0;
  if(!kcpu_interval || !max)return 0;

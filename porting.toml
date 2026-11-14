@@ -61,6 +61,10 @@ command = "fastboot boot ico4-lock-fix.img"
 revision = "571fcc972a4ea3e8c402183ba98a0a8f67a4750a"
 result = "On cold-cache boot 41ee75ce, the Home Screen displayed complete Settings and App Store icons. The 56 px Wi-Fi, Battery and About cache variants were transparent. All 488 GPU submissions from iconservicesagent PID 139 retired. Launchd recorded a per-process Jetsam termination after 173.752 s."
 
+[[area.evidence]]
+kind = "source"
+reference = "package/BootUiTraceProbe.c"
+result = "The cached 24A446 build exceeded retained code space by 196608 bytes and static data space by 229376 bytes. The board/storage archives and iPadOS crypto provider use size optimization without removing devices or selftests. Media retains eight sessions and a 256-note ring in boot-lifetime heap storage, allocated under the device lock in task context; allocation and event-thread failures remain retryable and open returns ENOMEM. Private UI capture groups, samples and CPU-seen slots are allocated once with atomic publication; IRQ, disabled-interrupt and disabled-preemption paths never allocate. Readers handle absent storage. Hardware boot remains unverified."
 
 [[area]]
 id = "firmware"
@@ -206,6 +210,11 @@ kind = "source"
 reference = "scripts/build-gop-legacy-display-27.py"
 result = "The 24A446 support object exports the reviewed request-layout offsets. LegacyDisplayProbe links Ethernet and software-AES probes only for XNU_TARGET_OS_OSX, matching the builder that emits those objects for macOS only. This corrects clean iPadOS 27 static-link dependencies; hardware boot remains unverified."
 
+[[area.evidence]]
+kind = "source"
+reference = "package/BootUiTraceProbe.c"
+result = "The cached 24A446 build exceeded retained code space by 196608 bytes and static data space by 229376 bytes. The board/storage archives and iPadOS crypto provider use size optimization without removing devices or selftests. Media retains eight sessions and a 256-note ring in boot-lifetime heap storage, allocated under the device lock in task context; allocation and event-thread failures remain retryable and open returns ENOMEM. Private UI capture groups, samples and CPU-seen slots are allocated once with atomic publication; IRQ, disabled-interrupt and disabled-preemption paths never allocate. Readers handle absent storage. Hardware boot remains unverified."
+
 [[area]]
 id = "input"
 status = "implemented"
@@ -321,6 +330,11 @@ result = "PASS keyboard service: 123 checks under ASan and UBSan for retry witho
 kind = "source"
 reference = "scripts/build-gop-legacy-display-27.py"
 result = "The 24A446 support object exports the reviewed request-layout offsets. LegacyDisplayProbe links Ethernet and software-AES probes only for XNU_TARGET_OS_OSX, matching the builder that emits those objects for macOS only. This corrects clean iPadOS 27 static-link dependencies; hardware boot remains unverified."
+
+[[area.evidence]]
+kind = "source"
+reference = "package/BootUiTraceProbe.c"
+result = "The cached 24A446 build exceeded retained code space by 196608 bytes and static data space by 229376 bytes. The board/storage archives and iPadOS crypto provider use size optimization without removing devices or selftests. Media retains eight sessions and a 256-note ring in boot-lifetime heap storage, allocated under the device lock in task context; allocation and event-thread failures remain retryable and open returns ENOMEM. Private UI capture groups, samples and CPU-seen slots are allocated once with atomic publication; IRQ, disabled-interrupt and disabled-preemption paths never allocate. Readers handle absent storage. Hardware boot remains unverified."
 
 [[area]]
 id = "gpu"
@@ -479,6 +493,11 @@ result = "05ac:12ab at Device Speed 4 with a USB 3 cable; Trust accepted on the 
 kind = "source"
 reference = "scripts/build-gop-legacy-display-27.py"
 result = "The 24A446 support object exports the reviewed request-layout offsets. LegacyDisplayProbe links Ethernet and software-AES probes only for XNU_TARGET_OS_OSX, matching the builder that emits those objects for macOS only. This corrects clean iPadOS 27 static-link dependencies; hardware boot remains unverified."
+
+[[area.evidence]]
+kind = "source"
+reference = "package/BootUiTraceProbe.c"
+result = "The cached 24A446 build exceeded retained code space by 196608 bytes and static data space by 229376 bytes. The board/storage archives and iPadOS crypto provider use size optimization without removing devices or selftests. Media retains eight sessions and a 256-note ring in boot-lifetime heap storage, allocated under the device lock in task context; allocation and event-thread failures remain retryable and open returns ENOMEM. Private UI capture groups, samples and CPU-seen slots are allocated once with atomic publication; IRQ, disabled-interrupt and disabled-preemption paths never allocate. Readers handle absent storage. Hardware boot remains unverified."
 
 [[area]]
 id = "network"
@@ -682,6 +701,11 @@ kind = "source"
 reference = "scripts/build-gop-legacy-display-27.py"
 result = "On macOS the keyboard firmware image is placed in __DATA,__firmware."
 
+[[area.evidence]]
+kind = "source"
+reference = "package/BootUiTraceProbe.c"
+result = "The cached 24A446 build exceeded retained code space by 196608 bytes and static data space by 229376 bytes. The board/storage archives and iPadOS crypto provider use size optimization without removing devices or selftests. Media retains eight sessions and a 256-note ring in boot-lifetime heap storage, allocated under the device lock in task context; allocation and event-thread failures remain retryable and open returns ENOMEM. Private UI capture groups, samples and CPU-seen slots are allocated once with atomic publication; IRQ, disabled-interrupt and disabled-preemption paths never allocate. Readers handle absent storage. Hardware boot remains unverified."
+
 [[area]]
 id = "diagnostics"
 status = "implemented"
@@ -729,6 +753,11 @@ result = "With cs-profile=1, exact cross-calls target the SpringBoard main threa
 kind = "source"
 reference = "scripts/build-gop-legacy-display-27.py"
 result = "The 24A446 support object exports the reviewed request-layout offsets. LegacyDisplayProbe links Ethernet and software-AES probes only for XNU_TARGET_OS_OSX, matching the builder that emits those objects for macOS only. This corrects clean iPadOS 27 static-link dependencies; hardware boot remains unverified."
+
+[[area.evidence]]
+kind = "source"
+reference = "package/BootUiTraceProbe.c"
+result = "The cached 24A446 build exceeded retained code space by 196608 bytes and static data space by 229376 bytes. The board/storage archives and iPadOS crypto provider use size optimization without removing devices or selftests. Media retains eight sessions and a 256-note ring in boot-lifetime heap storage, allocated under the device lock in task context; allocation and event-thread failures remain retryable and open returns ENOMEM. Private UI capture groups, samples and CPU-seen slots are allocated once with atomic publication; IRQ, disabled-interrupt and disabled-preemption paths never allocate. Readers handle absent storage. Hardware boot remains unverified."
 
 [[area]]
 id = "arm64e-os"
@@ -802,3 +831,8 @@ reference = "package/BootLog.c"
 command = "fastboot boot boot.img (log-video=1 diag=1); the test agent transcodes a 1280x720 H.264 clip with avconvert"
 revision = "9252d988c0b668bc1f68c3e482951c8b2b33abc1"
 result = "[video] stage 6; [video vt] stage 2, 27 sessions, 60 frames handed over with pictures; [video media] 4808 sessions opened, 1 source change at 1280x720 8-bit, 60 bitstream buffers queued, 60 pictures returned, 4807 sessions failed with 0x01000005 (HEVC). No GPU hang in the run."
+
+[[area.evidence]]
+kind = "source"
+reference = "package/BootUiTraceProbe.c"
+result = "The cached 24A446 build exceeded retained code space by 196608 bytes and static data space by 229376 bytes. The board/storage archives and iPadOS crypto provider use size optimization without removing devices or selftests. Media retains eight sessions and a 256-note ring in boot-lifetime heap storage, allocated under the device lock in task context; allocation and event-thread failures remain retryable and open returns ENOMEM. Private UI capture groups, samples and CPU-seen slots are allocated once with atomic publication; IRQ, disabled-interrupt and disabled-preemption paths never allocate. Readers handle absent storage. Hardware boot remains unverified."
