@@ -6,6 +6,10 @@ SM8550. The device profile selects
 branch builds every OS profile; `--os 17|26|27` picks the target (the 27
 profile is the one under active maintenance).
 
+The SoC source pin includes the GENI UART, shared QUP DMA and video clock/SMMU
+operations consumed by the Bluetooth and video board drivers. Keep this pin
+aligned with the Sm8550Platform catalog revision in the UniXNU builder.
+
 ## Structure
 
 | Path | Contents |
