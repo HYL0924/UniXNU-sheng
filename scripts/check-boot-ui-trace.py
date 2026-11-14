@@ -25,6 +25,8 @@ static bool ml_at_interrupt_context(void){return false;}
 #include "BootUiTraceCore.h"
 #include "BootUiTraceDetails.h"
 #define KERN_SUCCESS 0
+#define VM_KERNEL_UNSLIDE(address) (address)
+#define VM_KERNEL_UNSLIDE_OR_PERM(address) (address)
 #define TH_WAIT 0x01
 #define TH_RUN 0x04
 #define TH_TERMINATE 0x10

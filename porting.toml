@@ -759,6 +759,11 @@ kind = "source"
 reference = "package/BootUiTraceProbe.c"
 result = "The cached 24A446 build exceeded retained code space by 196608 bytes and static data space by 229376 bytes. The board/storage archives and iPadOS crypto provider use size optimization without removing devices or selftests. Media retains eight sessions and a 256-note ring in boot-lifetime heap storage, allocated under the device lock in task context; allocation and event-thread failures remain retryable and open returns ENOMEM. Private UI capture groups, samples and CPU-seen slots are allocated once with atomic publication; IRQ, disabled-interrupt and disabled-preemption paths never allocate. Readers handle absent storage. Hardware boot remains unverified."
 
+[[area.evidence]]
+kind = "source"
+reference = "scripts/check-boot-ui-trace.py"
+result = "The host capture fixture uses identity VM_KERNEL_UNSLIDE and VM_KERNEL_UNSLIDE_OR_PERM conversions because its synthetic kernel addresses have no kernel slide. Production VM address conversion remains unchanged."
+
 [[area]]
 id = "arm64e-os"
 status = "planned"
