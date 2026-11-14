@@ -380,6 +380,12 @@ extern "C" void boot_progress_cancel_scanout(void) {}
 extern "C" void boot_progress_stage(const char *) {}
 extern "C" int boot_progress_pulse_anchor(uintptr_t,uint64_t,unsigned,unsigned,unsigned) {return 0;}
 ''')
+if not MACOS:
+    # The generic backend exports this only for macOS. The board diagnostic
+    # reader needs the reviewed 24A446 offsets, not its iPadOS 17 fallback.
+    with support.open('a') as output:
+        output.write('\nextern "C" const unsigned native_legacy_request_layout[6] = {' +
+                     ','.join(str(R[key]) for key in ('rect0', 'rect1', 'masks', 'options', 'dims', 'surfaces')) + '};\n')
 compile_cpp(support, OUT / 'LegacyDisplaySupport27.o')
 # The keystore state service (AppleKeyStoreState) and its probe, unchanged from iPadOS 17.
 keystore_source = ROOT / 'kits/sheng/KeyStoreProbe.cpp'

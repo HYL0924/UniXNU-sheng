@@ -201,6 +201,11 @@ kind = "source"
 reference = "package/LegacyDisplayProbe.cpp"
 result = "The diagnostic ring timestamps VSync timer arms, sends, idle stops, late ticks, starts and refresh-rate reports."
 
+[[area.evidence]]
+kind = "source"
+reference = "scripts/build-gop-legacy-display-27.py"
+result = "The 24A446 support object exports the reviewed request-layout offsets. LegacyDisplayProbe links Ethernet and software-AES probes only for XNU_TARGET_OS_OSX, matching the builder that emits those objects for macOS only. This corrects clean iPadOS 27 static-link dependencies; hardware boot remains unverified."
+
 [[area]]
 id = "input"
 status = "implemented"
@@ -311,6 +316,11 @@ reference = "scripts/check-keyboard-service-host.py"
 command = "python3 scripts/check-keyboard-service-host.py"
 revision = "e0fbcadbb6f26ff232703e6bb1bfc18bfbb2ffb9"
 result = "PASS keyboard service: 123 checks under ASan and UBSan for retry without a new edge, bounded input batches, idle without resets, keepalive wake, failed state writes, repeated read failures, recovery backoff and counter wrap."
+
+[[area.evidence]]
+kind = "source"
+reference = "scripts/build-gop-legacy-display-27.py"
+result = "The 24A446 support object exports the reviewed request-layout offsets. LegacyDisplayProbe links Ethernet and software-AES probes only for XNU_TARGET_OS_OSX, matching the builder that emits those objects for macOS only. This corrects clean iPadOS 27 static-link dependencies; hardware boot remains unverified."
 
 [[area]]
 id = "gpu"
@@ -464,6 +474,11 @@ reference = "https://github.com/UniXNU/QcomDwc3/blob/e4efe95c903a737e0f5955e5b50
 command = "fastboot boot boot.img"
 revision = "1edc1ca7fc87defa8b2231254667ad4085320706"
 result = "05ac:12ab at Device Speed 4 with a USB 3 cable; Trust accepted on the panel; a Mac reported Device Paired, then AMDeviceValidatePairing and AMDeviceStartSession succeeded."
+
+[[area.evidence]]
+kind = "source"
+reference = "scripts/build-gop-legacy-display-27.py"
+result = "The 24A446 support object exports the reviewed request-layout offsets. LegacyDisplayProbe links Ethernet and software-AES probes only for XNU_TARGET_OS_OSX, matching the builder that emits those objects for macOS only. This corrects clean iPadOS 27 static-link dependencies; hardware boot remains unverified."
 
 [[area]]
 id = "network"
@@ -709,6 +724,11 @@ result = "The shared sampler retains the three expected return addresses for a b
 kind = "source"
 reference = "scripts/sheng-springboard-profile.py"
 result = "With cs-profile=1, exact cross-calls target the SpringBoard main thread. The trace includes Mach wait durations and destinations, per-core PMU availability, EL0 instructions and cycles, and sampler time."
+
+[[area.evidence]]
+kind = "source"
+reference = "scripts/build-gop-legacy-display-27.py"
+result = "The 24A446 support object exports the reviewed request-layout offsets. LegacyDisplayProbe links Ethernet and software-AES probes only for XNU_TARGET_OS_OSX, matching the builder that emits those objects for macOS only. This corrects clean iPadOS 27 static-link dependencies; hardware boot remains unverified."
 
 [[area]]
 id = "arm64e-os"
