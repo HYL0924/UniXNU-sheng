@@ -24,6 +24,11 @@ kind = "source"
 reference = "board.toml"
 result = "Implementation and configuration described in this section"
 
+[[area.evidence]]
+kind = "source"
+reference = "feeds.toml"
+result = "The SM8550 source pin is 2dc650ca76ae38715cd0712e60a44b14fe251745, providing the GENI UART, QUP DMA, video clock and apps-SMMU operations consumed by the current board archive. The previous a9f45dc pin lacks Sm8550GeniUart.h and fails a clean iPadOS 27 build. Hardware boot with the new pin remains unverified."
+
 
 [[area.evidence]]
 kind = "source"
