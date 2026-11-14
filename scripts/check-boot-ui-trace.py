@@ -2,6 +2,8 @@
 """Run actual UI capture, stack grouping and display encoding with VM/task stand-ins."""
 from pathlib import Path
 import json,hashlib,subprocess
+import sys
+import os
 root=Path(__file__).resolve().parents[1];out=root/'build/cpu-desktop/ui-trace';out.mkdir(parents=True,exist_ok=True)
 package=root/'kits/sheng' if (root/'kits/sheng').is_dir() else root/'package'
 s=(package/'BootUiTraceProbe.c').read_text();body=s[s.index('// CPU-only capture buffers'):s.index('// One kernel thread found')]
@@ -9,6 +11,9 @@ s=(package/'BootUiTraceProbe.c').read_text();body=s[s.index('// CPU-only capture
 # existing internal-state assertions still inspect the real capture buffers.
 body=body.replace('#undef samples','').replace('#undef draft','').replace('#undef published','')
 prefix=r'''
+#ifdef __linux__
+#define _POSIX_C_SOURCE 200809L
+#endif
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -16,6 +21,13 @@ prefix=r'''
 #include <assert.h>
 #include <pthread.h>
 #include <stdlib.h>
+#ifdef __linux__
+/* Match Darwin's 64-bit integer varargs ABI in this kernel stand-in. */
+#define uint64_t unsigned long long
+#define int64_t long long
+#define strlcpy fixture_strlcpy
+static size_t fixture_strlcpy(char *dst,const char *src,size_t size){size_t n=strlen(src);if(size){size_t take=n<size-1?n:size-1;memcpy(dst,src,take);dst[take]=0;}return n;}
+#endif
 typedef uintptr_t vm_size_t;
 typedef uintptr_t vm_offset_t;
 static void *IOMallocAligned(vm_size_t size,vm_offset_t alignment){void *p=NULL;return posix_memalign(&p,alignment,size)?NULL:p;}
@@ -124,7 +136,7 @@ int main(void){
  boot_ui_trace_snapshot(8*(boot_ui_trace_pages-2));assert(strstr(boot_ui_trace_rows[0],"MAIN B p140")&&strstr(boot_ui_trace_rows[7],"MAIN S p110"));
  {struct {char rows[12][120];char guard[16];} live;memset(&live,'Z',sizeof(live));unsigned got=boot_ui_trace_role_rows(1,live.rows,12,1);
   for(unsigned i=0;i<got;++i){assert(strlen(live.rows[i])<120);puts(live.rows[i]);}for(unsigned i=0;i<16;++i)assert(live.guard[i]=='Z');
-  assert(got==6&&strstr(live.rows[0],"STKS p110")&&strstr(live.rows[1],"STKS trap=")&&strstr(live.rows[2],"STKS 01")&&strstr(live.rows[4],"STKS 17")&&strstr(live.rows[5],"STKS#1 x2 p-1"));
+  assert(got==7&&strstr(live.rows[0],"STKS p110")&&strstr(live.rows[1],"STKS trap=")&&strstr(live.rows[2],"STKS 01")&&strstr(live.rows[4],"STKS 17")&&strstr(live.rows[5],"STKS kern st=")&&strstr(live.rows[6],"STKS#1 x2 p-1"));
   assert(boot_ui_trace_role_rows(1,live.rows,5,1)==0&&!trace_lock);trace_lock=1;assert(boot_ui_trace_role_rows(1,live.rows,12,1)==0&&boot_ui_trace_role_peer(1)==-1);trace_lock=0;
   got=boot_ui_trace_role_rows(3,live.rows,12,0);for(unsigned i=0;i<got;++i)puts(live.rows[i]);
   assert(got==2&&strstr(live.rows[0],"STKU SpringBoard p27 cache+1000")&&strstr(live.rows[1],"STKU#1 x2")&&boot_ui_trace_role_peer(3)==0&&!trace_lock);}
@@ -169,11 +181,20 @@ int main(void){
 }
 '''
 (out/'test.c').write_text(prefix+body+main)
-subprocess.run(['clang','-std=c11','-Wall','-Wextra','-Werror','-Wno-unused-function','-O1','-g','-fsanitize=address,undefined','-pthread','-I',str(package),str(out/'test.c'),'-o',str(out/'test')],check=True,timeout=45)
-r=subprocess.run([str(out/'test')],check=True,capture_output=True,text=True,timeout=15)
+compiler=os.environ.get('CC','clang')
+compiler_flags=['-Wno-format-truncation','-Wno-misleading-indentation'] if Path(compiler).name=='gcc' else []
+subprocess.run([compiler,'-std=c11','-Wall','-Wextra','-Werror','-Wno-unused-function',*compiler_flags,'-O1','-g','-fsanitize=address,undefined','-pthread','-I',str(package),str(out/'test.c'),'-o',str(out/'test')],check=True,timeout=45)
+r=subprocess.run([str(out/'test')],capture_output=True,text=True,timeout=15)
+(out/'stderr.txt').write_text(r.stderr)
+if r.returncode:
+ print(r.stdout)
+ print(r.stderr,file=sys.stderr)
+ raise SystemExit(r.returncode)
 (out/'formatted.txt').write_text(r.stdout)
 import importlib.util
-spec=importlib.util.spec_from_file_location('decoder',root/'scripts/decode-boot-ui-trace.py');decoder=importlib.util.module_from_spec(spec);spec.loader.exec_module(decoder)
+decoder_path=next((p for p in (root/'scripts/decode-boot-ui-trace.py',root.parent/'scripts/decode-boot-ui-trace.py',root.parent/'UniXNU/scripts/decode-boot-ui-trace.py') if p.is_file()),None)
+if decoder_path is None:raise SystemExit('decode-boot-ui-trace.py not found in the build tree or UniXNU checkout')
+spec=importlib.util.spec_from_file_location('decoder',decoder_path);decoder=importlib.util.module_from_spec(spec);spec.loader.exec_module(decoder)
 rows=decoder.decode(r.stdout);backboard=next(row for row in rows if row['role']=='B')
 for first in (1,9,17,25):
  assert backboard['frames_%d_%d'%(first,first+7)]==[hex(0x1e3dc0000+i*4) for i in range(first-1,first+7)]

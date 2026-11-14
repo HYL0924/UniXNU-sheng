@@ -764,6 +764,11 @@ kind = "source"
 reference = "scripts/check-boot-ui-trace.py"
 result = "The host capture fixture uses identity VM_KERNEL_UNSLIDE and VM_KERNEL_UNSLIDE_OR_PERM conversions because its synthetic kernel addresses have no kernel slide. Production VM address conversion remains unchanged."
 
+[[area.evidence]]
+kind = "source"
+reference = "scripts/check-boot-ui-trace.py"
+result = "The full capture fixture retains ASan/UBSan and bounded-row assertions, includes the current kernel-state row in its seven-row detail view, finds the shared decoder from build-tree or standalone checkouts, and reports captured assertion failures. CC selection and Darwin integer stand-ins allow the same VM/task fixture to run in local Linux. Production address conversion remains unchanged."
+
 [[area]]
 id = "arm64e-os"
 status = "planned"
